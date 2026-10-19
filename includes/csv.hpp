@@ -4,242 +4,264 @@
 # include <iostream>
 # include <string>
 # include <fstream>
+# include <variant>
 # include <vector>
 # include <ctime>
+# include <iomanip>
+# include <sstream>
+# include <cstdio>
+# include <cstring>
+# include <algorithm>
 # include <unordered_map>
+# include "bigint.hpp"
 
 enum cTypes
 {
 	STRING,
 	INT,
+	BIGINT,
 	FLOAT,
-	DATE
+	DATE,
+	UNDT
 };
 
-struct type
-{
-	cTypes		type;
-	std::string	sData;
-	int			iData;
-	float		fData;
-	struct tm	dData;
-};
-
+using Cell = std::variant<
+	std::monostate,   // UNDT / valeur manquante
+	std::string,
+	int,
+	bigint,
+	float,
+	std::tm
+>;
 
 class columnType
 {
 	private:
-		cTypes						_type;
-		std::vector<std::string>	_sData;
-		std::vector<int>			_iData;
-		std::vector<float>			_fData;
-		std::vector<struct tm>		_dData;
+		cTypes				_type;
+		std::vector<Cell>	_data;
+
+	private:
+		void	determineCellType(Cell &cell);
+
 
 	public:
-		columnType(cTypes type);
+		columnType(Cell &cell);
 		~columnType();
-	
+
 	public:
-		void	push_back(type &data);
+		const Cell &operator[](size_t index) const;
+
+	public:
+		void	push_back(Cell &cell);
+		size_t	size(void) const;
+		void	reserve(size_t size);
+		cTypes	getType(void) const;
 };
 
-columnType::columnType(cTypes type): _type(type){}
+columnType::columnType(Cell &cell)
+{
+	determineCellType(cell);
+}
 
 columnType::~columnType(){}
 
-void	columnType::push_back(type &data)
+void	columnType::determineCellType(Cell &cell)
 {
-	switch (data.type)
-	{
-		case STRING:
-			std::cout << "String: " << data.sData << std::endl;
-			_sData.push_back(data.sData);
-			break;
-		
-		case INT:
-			std::cout << "Int: " << data.iData << std::endl;
-			_iData.push_back(data.iData);
-			break;
-		
-		case FLOAT:
-			std::cout << "Float: " << data.fData << std::endl;
-			_fData.push_back(data.fData);
-			break;
-		
-		case DATE:
-			_dData.push_back(data.dData);
-			break;
-		
-		default:
-			throw std::runtime_error("Error: Unknown type");
-			break;
-	}
+	if (std::get_if<std::string>(&cell))
+		this->_type = STRING;
+	else if (std::get_if<int>(&cell))
+		this->_type = INT;
+	else if (std::get_if<bigint>(&cell))
+		this->_type = BIGINT;
+	else if (std::get_if<float>(&cell))
+		this->_type = FLOAT;
+	else if (std::get_if<std::tm>(&cell))
+		this->_type = DATE;
+	else
+		this->_type = UNDT;
+}
+
+const Cell &columnType::operator[](size_t index) const
+{
+	if (index >= this->_data.size())
+		throw std::runtime_error("columnType: Index out of bound");
+	return this->_data[index];
+}
+
+void	columnType::push_back(Cell &cell)
+{
+	if (this->_type == UNDT && !std::get_if<std::monostate>(&cell))
+		determineCellType(cell);
+	else if (this->_type == UNDT && !std::get_if<bigint>(&cell))
+		this->_type = BIGINT;
+	
+	this->_data.push_back(cell);
+}
+
+size_t	columnType::size(void) const
+{
+	return this->_data.size();
+}
+
+void	columnType::reserve(size_t size)
+{
+	this->_data.reserve(size);
+}
+
+cTypes columnType::getType(void) const
+{
+	return this->_type;
 }
 
 class csv
 {
 	private:
+		bool						_empty;
 		char						_delim;
 		std::vector<std::string>	_columnsNames;
 		std::vector<columnType>		_data;
 
 	private:
+		void	allocate(size_t nbCols, size_t nb_rows);
 		void	fillColumnsNames(std::string &line);
+		void	determineDelim(std::string &line);
 		void	fillLine(std::string &line);
 		void	insertData(std::string data, int numCol);
-		type	analyzeType(std::string &data);
+		Cell	analyzeType(std::string &data);
 
 	public:
 		csv(std::string pathToFile, bool columnNames=true,
 			std::initializer_list<std::string> colsNames = {},
 			std::initializer_list<std::string> types = {});
 		~csv();
+
+	public:
+		const std::vector<std::string> &getColsNames(void) const
+		{return this->_columnsNames;}
+		const std::vector<columnType> &getData(void) const
+		{return this->_data;}
+		bool	empty(void) const
+		{return this->_empty;}
 };
 
-void	csv::fillColumnsNames(std::string &line)
-{
-	int comma = 0, semicol = 0;
-	bool inPar = false;
-	for (int i = 0; i < line.size(); i++)
-	{
-		if (line[i] == '\"' && !inPar)
-			inPar = true;
-		else if (line[i] == '\"' && inPar
-			&& ((i < line.size() - 1 && line[i + 1] != '\"') || (i == line.size() - 1)))
-			inPar = false;
-		if (inPar)
-			continue ;
-		if (line[i] == ';')
-			semicol++;
-		if (line[i] == ',')
-			comma++;
-	}
-	if (inPar)
-		throw std::runtime_error("Error: double quotes must be closed");
-	this->_delim = (semicol > comma) ? ';' : ',';
-	int j = 0;
-	int i = 0;
-	for (int i = 0; i < line.size(); i++)
-	{
-		if (line[i] == '\"' && !inPar)
-			inPar = true;
-		else if (line[i] == '\"' && inPar
-			&& ((i < line.size() - 1 && line[i + 1] != '\"') || (i == line.size() - 1)))
-			inPar = false;
-		if (inPar)
-			continue ;
-		if (line[i] == this->_delim)
-		{
-			this->_columnsNames.push_back(std::string(line, j, i - j));
-			j = i + 1;
-		}
-	}
-	this->_columnsNames.push_back(std::string(line, j, i - j));
-}
 
-type	csv::analyzeType(std::string &data)
+//print functions---------------------------------------------------
+
+static std::string cellToString(Cell const &cell)
 {
-	std::unordered_map<char, int> dict;
-	for (char c : data)
-	{
-		if (dict.find(c) != dict.end())
-			dict.at(c) += 1;
-		else
-			dict.insert(std::make_pair(c, 0));
-	}
-	bool isInt = true;
-	bool isFloat = true;
-	// bool isDate = true; later
-	for (auto &pair : dict)
-	{
-		if (isInt && !isdigit(pair.first))
-			isInt = false;
-		else if (isFloat && !isdigit(pair.first) && pair.first != '.')
-			isFloat = false;
-	}
-	type res;
-	if (isInt)
-		res = (type){.type = INT, .iData = std::atoi(data.c_str())};
-	else if (isFloat)
-		res = (type){.type = FLOAT, .fData = static_cast<float>(std::atof(data.c_str()))};
+	std::ostringstream ss;
+	if (auto str = std::get_if<std::string>(&cell))
+		ss << *str;
+	else if (auto nb = std::get_if<int>(&cell))
+		ss << *nb;
+	else if (auto nb = std::get_if<bigint>(&cell))
+		ss << *nb;
+	else if (auto f = std::get_if<float>(&cell))
+		ss << *f;
+	else if (auto date = std::get_if<std::tm>(&cell))
+		ss << std::put_time(date, "%Y-%m-%d %H:%M:%S");
 	else
-		res = (type){.type = STRING, .sData = data};
-	return res;
+		ss << "null";
+	return ss.str();
 }
 
-void	csv::insertData(std::string data, int numCol)
+std::ostream &operator<<(std::ostream &os, Cell const &cell)
 {
-	type sdata = this->analyzeType(data);
-	if (static_cast<size_t>(numCol) >= this->_data.size())
-		this->_data.push_back(sdata.type);
-	
-	this->_data[numCol].push_back(sdata);
+	return os << cellToString(cell);
 }
 
-void	csv::fillLine(std::string &line)
+static void printSeparator(std::ostream &os, std::vector<size_t> const &widths)
 {
-	bool inPar = false;
-	int j = 0;
-	int countCol = 0;
-	int i;
-	for (i = 0; i < line.size() && countCol < this->_columnsNames.size(); i++)
+	os << '+';
+	for (size_t w : widths)
+		os << std::string(w + 2, '-') << '+';
+	os << '\n';
+}
+
+static void printRow(std::ostream &os,
+					std::vector<std::string> const &cells,
+					std::vector<size_t> const &widths,
+					std::vector<bool> const &rightAlign)
+{
+	os << '|';
+	for (size_t j = 0; j < widths.size(); j++)
 	{
-		if (line[i] == '\"' && !inPar)
-			inPar = true;
-		else if (line[i] == '\"' && inPar
-			&& ((i < line.size() - 1 && line[i + 1] != '\"') || (i == line.size() - 1)))
-			inPar = false;
-		if (inPar)
-			continue ;
-		if (line[i] == this->_delim)
+		os << ' ' << (rightAlign[j] ? std::right : std::left)
+		<< std::setw(widths[j]) << cells[j] << " |";
+	}
+	os << '\n';
+}
+
+std::string	getColType(columnType const &col)
+{
+	if (col.getType() == STRING)
+		return "String";
+	else if (col.getType() == INT)
+		return "Integer";
+	else if (col.getType() == BIGINT)
+		return "BigInteger";
+	else if (col.getType() == FLOAT)
+		return "Float";
+	else if (col.getType() == DATE)
+		return "DateTime";
+	return "Unknown";
+}
+
+static constexpr size_t MAX_DISPLAY_ROWS = 30;
+
+std::ostream &operator<<(std::ostream &os, csv const &data)
+{
+	auto const &names = data.getColsNames();
+	auto const &dataTable = data.getData();
+
+	size_t nbCols = std::max(names.size(), dataTable.size());
+	if (nbCols == 0)
+		return os;
+
+	size_t totalRows = 0;
+	for (auto const &col : dataTable)
+		totalRows = std::max(totalRows, col.size());
+
+	size_t nbRows = std::min(totalRows, MAX_DISPLAY_ROWS);
+
+	std::vector<std::string> header(nbCols);
+	std::vector<std::string> types(nbCols);
+	std::vector<size_t> widths(nbCols, 0);
+	std::vector<bool> rightAlign(nbCols, false);
+
+	for (size_t j = 0; j < nbCols; j++)
+	{
+		if (j < names.size())
+			header[j] = names[j];
+		types[j] = getColType(dataTable[j]);
+		widths[j] = (header[j].size() > types[j].size()) ? header[j].size() : types[j].size();
+	}
+
+	std::vector<std::vector<std::string>> rows(nbRows, std::vector<std::string>(nbCols));
+	for (size_t j = 0; j < dataTable.size(); j++)
+	{
+		for (size_t i = 0; i < std::min(dataTable[j].size(), nbRows); i++)
 		{
-			insertData(std::string(line, j, i - j), countCol);
-			j = i + 1;
-			countCol++;
+			rows[i][j] = cellToString(dataTable[j][i]);
+			widths[j] = std::max(widths[j], rows[i][j].size());
+			if (std::holds_alternative<int>(dataTable[j][i]) ||
+				std::holds_alternative<float>(dataTable[j][i]))
+				rightAlign[j] = true;
 		}
 	}
-	insertData(std::string(line, j, i - j), countCol);
+
+	printSeparator(os, widths);
+	printRow(os, header, widths, std::vector<bool>(nbCols, false));
+	printRow(os, types, widths, std::vector<bool>(nbCols, false));
+	printSeparator(os, widths);
+	for (auto const &row : rows)
+		printRow(os, row, widths, rightAlign);
+	printSeparator(os, widths);
+
+	if (totalRows > nbRows)
+		os << "... " << (totalRows - nbRows) << " ligne(s) supplémentaire(s) ("
+		<< totalRows << " au total)\n";
+
+	return os;
 }
-
-csv::csv(std::string pathToFile, bool columnNames,
-	std::initializer_list<std::string> colsNames,
-	std::initializer_list<std::string> types)
-{
-	std::ifstream stream;
-	try
-	{
-		stream.open(pathToFile);
-		std::string line;
-		int count = 0;
-		while (std::getline(stream, line))
-		{
-			if (!count && columnNames)
-				fillColumnsNames(line);
-			else if (!count && !columnNames && colsNames.size())
-			{
-				this->_columnsNames = colsNames;
-				count++;
-			}
-			if (count)
-			{
-				fillLine(line);
-				return ;
-			}
-
-			count++;
-		}
-		stream.close();
-	}
-	catch(const std::exception& e)
-	{
-		std::cerr << e.what() << '\n';
-		stream.close();
-	}
-}
-
-csv::~csv()
-{
-}
-
-
 #endif
