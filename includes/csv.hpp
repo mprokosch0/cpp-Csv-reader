@@ -15,6 +15,9 @@
 # include <unordered_map>
 # include "bigint.hpp"
 
+# define INT_MAX 2147483647
+# define INT_MIN -2147483648
+
 enum cTypes
 {
 	STRING,
@@ -92,8 +95,6 @@ void	columnType::push_back(Cell &cell)
 {
 	if (this->_type == UNDT && !std::get_if<std::monostate>(&cell))
 		determineCellType(cell);
-	else if (this->_type == UNDT && !std::get_if<bigint>(&cell))
-		this->_type = BIGINT;
 	
 	this->_data.push_back(cell);
 }
@@ -117,12 +118,16 @@ class csv
 {
 	private:
 		bool						_empty;
+		bool						_entryTypes;
 		char						_delim;
 		std::vector<std::string>	_columnsNames;
 		std::vector<columnType>		_data;
 
 	private:
-		void	allocate(size_t nbCols, size_t nb_rows);
+		void	initCsv(std::string &pathToFile, bool columnNames,
+					std::initializer_list<std::string> &colsNames,
+					std::initializer_list<cTypes> &types);
+		void	allocate(size_t nbCols, size_t nb_rows, std::vector<cTypes> types);
 		void	fillColumnsNames(std::string &line);
 		void	determineDelim(std::string &line);
 		void	fillLine(std::string &line);
@@ -130,9 +135,14 @@ class csv
 		Cell	analyzeType(std::string &data);
 
 	public:
-		csv(std::string pathToFile, bool columnNames=true,
+		csv(std::string pathToFile, bool columnNames,
 			std::initializer_list<std::string> colsNames = {},
-			std::initializer_list<std::string> types = {});
+			std::initializer_list<cTypes> types = {});
+		csv(std::string pathToFile, bool columnNames,
+			std::initializer_list<cTypes> types = {});
+		csv(std::string pathToFile,
+			std::initializer_list<cTypes> types);
+		csv(std::string pathToFile);
 		~csv();
 
 	public:
@@ -203,6 +213,21 @@ std::string	getColType(columnType const &col)
 	else if (col.getType() == FLOAT)
 		return "Float";
 	else if (col.getType() == DATE)
+		return "DateTime";
+	return "Unknown";
+}
+
+std::string	getCType(cTypes const &cType)
+{
+	if (cType == STRING)
+		return "String";
+	else if (cType == INT)
+		return "Integer";
+	else if (cType == BIGINT)
+		return "BigInteger";
+	else if (cType == FLOAT)
+		return "Float";
+	else if (cType == DATE)
 		return "DateTime";
 	return "Unknown";
 }
