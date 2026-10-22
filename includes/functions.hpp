@@ -155,7 +155,7 @@ void	csv::insertData(std::string data, int numCol)
 		sdata = this->analyzeType(data);
 	else if (!data.size())
 		sdata = std::monostate();
-	if (/*this->_entryTypes && */colType != UNDT)
+	if (/*this->_entryTypes && */colType != AUTO)
 	{
 		cTypes cellType = resolveType(sdata);
 		if (colType == BIGINT && cellType == INT)
@@ -232,10 +232,14 @@ void	csv::allocate(size_t nbCols, size_t nbRows, std::vector<cTypes> types)
 				case DATE:
 					c = std::tm();
 					break;
+
+				case AUTO:
+					c = std::monostate();
+					break;
 			
-			default:
-				c = std::monostate();
-				break;
+				default:
+					throw std::runtime_error("UNDT cannot be a col type");
+					break;
 			}
 		}
 		this->_data.emplace_back(c);

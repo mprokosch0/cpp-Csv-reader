@@ -25,6 +25,7 @@ enum cTypes
 	BIGINT,
 	FLOAT,
 	DATE,
+	AUTO,
 	UNDT
 };
 
@@ -81,7 +82,7 @@ void	columnType::determineCellType(Cell &cell)
 	else if (std::get_if<std::tm>(&cell))
 		this->_type = DATE;
 	else
-		this->_type = UNDT;
+		this->_type = AUTO;
 }
 
 const Cell &columnType::operator[](size_t index) const
@@ -93,7 +94,7 @@ const Cell &columnType::operator[](size_t index) const
 
 void	columnType::push_back(Cell &cell)
 {
-	if (this->_type == UNDT && !std::get_if<std::monostate>(&cell))
+	if (this->_type == AUTO && !std::get_if<std::monostate>(&cell))
 		determineCellType(cell);
 	
 	this->_data.push_back(cell);
