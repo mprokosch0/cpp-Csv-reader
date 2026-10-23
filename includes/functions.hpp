@@ -115,8 +115,10 @@ Cell csv::analyzeType(std::string &s)
 	long long v = std::strtoll(b, &end, 10);
 	if (*end == '\0')
 	{
+		# ifndef NOBIGINT
 		if (errno == ERANGE || v > INT_MAX || v < INT_MIN)
 			return bigint(s);
+		# endif
 		return static_cast<int>(v);
 	}
 
@@ -138,8 +140,10 @@ cTypes	resolveType(Cell const &cell)
 		return STRING;
 	else if (std::get_if<int>(&cell))
 		return INT;
+	# ifndef NOBIGINT
 	else if (std::get_if<bigint>(&cell))
 		return BIGINT;
+	# endif
 	else if (std::get_if<float>(&cell))
 		return FLOAT;
 	else if (std::get_if<std::tm>(&cell))
@@ -158,11 +162,13 @@ void	csv::insertData(std::string data, int numCol)
 	if (/*this->_entryTypes && */colType != AUTO)
 	{
 		cTypes cellType = resolveType(sdata);
+		# ifndef NOBIGINT
 		if (colType == BIGINT && cellType == INT)
 		{
 			sdata = bigint(*std::get_if<int>(&sdata));
 			cellType = BIGINT;
 		}
+		# endif
 		if (colType == FLOAT && cellType == INT)
 		{
 			sdata = static_cast<float>(std::get<int>(sdata));
@@ -220,11 +226,13 @@ void	csv::allocate(size_t nbCols, size_t nbRows, std::vector<cTypes> types)
 				case INT:
 					c = int();
 					break;
-				
+
+				# ifndef NOBIGINT
 				case BIGINT:
 					c = bigint();
 					break;
-				
+				# endif
+
 				case FLOAT:
 					c = float();
 					break;

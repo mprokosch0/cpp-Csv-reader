@@ -13,7 +13,12 @@
 # include <cstring>
 # include <algorithm>
 # include <unordered_map>
-# include "bigint.hpp"
+
+# if __has_include("bigint.hpp")
+#  include "bigint.hpp"
+# else
+#  define NOBIGINT
+# endif
 
 # define INT_MAX 2147483647
 # define INT_MIN -2147483648
@@ -22,7 +27,9 @@ enum cTypes
 {
 	STRING,
 	INT,
+# ifndef NOBIGINT
 	BIGINT,
+# endif
 	FLOAT,
 	DATE,
 	AUTO,
@@ -33,7 +40,9 @@ using Cell = std::variant<
 	std::monostate,   // UNDT / valeur manquante
 	std::string,
 	int,
+# ifndef NOBIGINT
 	bigint,
+# endif
 	float,
 	std::tm
 >;
@@ -75,8 +84,10 @@ void	columnType::determineCellType(Cell &cell)
 		this->_type = STRING;
 	else if (std::get_if<int>(&cell))
 		this->_type = INT;
+	# ifndef NOBIGINT
 	else if (std::get_if<bigint>(&cell))
 		this->_type = BIGINT;
+	# endif
 	else if (std::get_if<float>(&cell))
 		this->_type = FLOAT;
 	else if (std::get_if<std::tm>(&cell))
@@ -209,8 +220,10 @@ std::string	getColType(columnType const &col)
 		return "String";
 	else if (col.getType() == INT)
 		return "Integer";
+	# ifndef NOBIGINT
 	else if (col.getType() == BIGINT)
 		return "BigInteger";
+	# endif
 	else if (col.getType() == FLOAT)
 		return "Float";
 	else if (col.getType() == DATE)
@@ -224,8 +237,10 @@ std::string	getCType(cTypes const &cType)
 		return "String";
 	else if (cType == INT)
 		return "Integer";
+	# ifndef NOBIGINT
 	else if (cType == BIGINT)
 		return "BigInteger";
+	# endif
 	else if (cType == FLOAT)
 		return "Float";
 	else if (cType == DATE)
