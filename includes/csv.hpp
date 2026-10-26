@@ -11,6 +11,7 @@
 # include <sstream>
 # include <cstdio>
 # include <cstring>
+# include <cmath>
 # include <algorithm>
 # include <unordered_map>
 
@@ -31,6 +32,7 @@ enum cTypes
 	BIGINT,
 # endif
 	FLOAT,
+	DOUBLE,
 	DATE,
 	AUTO,
 	UNDT
@@ -44,6 +46,7 @@ using Cell = std::variant<
 	bigint,
 # endif
 	float,
+	double,
 	std::tm
 >;
 
@@ -65,10 +68,12 @@ class columnType
 		const Cell &operator[](size_t index) const;
 
 	public:
-		void	push_back(Cell &cell);
-		size_t	size(void) const;
-		void	reserve(size_t size);
-		cTypes	getType(void) const;
+		void								push_back(Cell &cell);
+		size_t								size(void) const;
+		void								reserve(size_t size);
+		cTypes								getType(void) const;
+		std::vector<Cell>::const_iterator	begin(void) const;
+		std::vector<Cell>::const_iterator	end(void) const;
 };
 
 columnType::columnType(Cell &cell)
@@ -90,6 +95,8 @@ void	columnType::determineCellType(Cell &cell)
 	# endif
 	else if (std::get_if<float>(&cell))
 		this->_type = FLOAT;
+	else if (std::get_if<double>(&cell))
+		this->_type = DOUBLE;
 	else if (std::get_if<std::tm>(&cell))
 		this->_type = DATE;
 	else
@@ -126,6 +133,16 @@ cTypes columnType::getType(void) const
 	return this->_type;
 }
 
+std::vector<Cell>::const_iterator columnType::begin(void) const
+{
+	return this->_data.begin();
+}
+
+std::vector<Cell>::const_iterator columnType::end(void) const
+{
+	return this->_data.end();
+}
+
 class csv
 {
 	private:
@@ -144,7 +161,7 @@ class csv
 		void	determineDelim(std::string &line);
 		void	fillLine(std::string &line);
 		void	insertData(std::string data, int numCol);
-		Cell	analyzeType(std::string &data);
+		Cell	analyzeType(const std::string &data);
 
 	public:
 		csv(std::string pathToFile, bool columnNames,
@@ -164,7 +181,47 @@ class csv
 		{return this->_data;}
 		bool	empty(void) const
 		{return this->_empty;}
+		template <typename T>
+		const std::vector<T> getCol(size_t index) const;
 };
+
+std::string	getColType(columnType const &col)
+{
+	if (col.getType() == STRING)
+		return "String";
+	else if (col.getType() == INT)
+		return "Integer";
+	# ifndef NOBIGINT
+	else if (col.getType() == BIGINT)
+		return "BigInteger";
+	# endif
+	else if (col.getType() == FLOAT)
+		return "Float";
+	else if (col.getType() == DOUBLE)
+		return "Double";
+	else if (col.getType() == DATE)
+		return "DateTime";
+	return "Unknown";
+}
+
+std::string	getCType(cTypes const &cType)
+{
+	if (cType == STRING)
+		return "String";
+	else if (cType == INT)
+		return "Integer";
+	# ifndef NOBIGINT
+	else if (cType == BIGINT)
+		return "BigInteger";
+	# endif
+	else if (cType == FLOAT)
+		return "Float";
+	else if (cType == DOUBLE)
+		return "Double";
+	else if (cType == DATE)
+		return "DateTime";
+	return "Unknown";
+}
 
 
 //print functions---------------------------------------------------
@@ -176,9 +233,13 @@ static std::string cellToString(Cell const &cell)
 		ss << *str;
 	else if (auto nb = std::get_if<int>(&cell))
 		ss << *nb;
+	# ifndef NOBIGINT
 	else if (auto nb = std::get_if<bigint>(&cell))
 		ss << *nb;
+	# endif
 	else if (auto f = std::get_if<float>(&cell))
+		ss << *f;
+	else if (auto f = std::get_if<double>(&cell))
 		ss << *f;
 	else if (auto date = std::get_if<std::tm>(&cell))
 		ss << std::put_time(date, "%Y-%m-%d %H:%M:%S");
@@ -212,40 +273,6 @@ static void printRow(std::ostream &os,
 		<< std::setw(widths[j]) << cells[j] << " |";
 	}
 	os << '\n';
-}
-
-std::string	getColType(columnType const &col)
-{
-	if (col.getType() == STRING)
-		return "String";
-	else if (col.getType() == INT)
-		return "Integer";
-	# ifndef NOBIGINT
-	else if (col.getType() == BIGINT)
-		return "BigInteger";
-	# endif
-	else if (col.getType() == FLOAT)
-		return "Float";
-	else if (col.getType() == DATE)
-		return "DateTime";
-	return "Unknown";
-}
-
-std::string	getCType(cTypes const &cType)
-{
-	if (cType == STRING)
-		return "String";
-	else if (cType == INT)
-		return "Integer";
-	# ifndef NOBIGINT
-	else if (cType == BIGINT)
-		return "BigInteger";
-	# endif
-	else if (cType == FLOAT)
-		return "Float";
-	else if (cType == DATE)
-		return "DateTime";
-	return "Unknown";
 }
 
 static constexpr size_t MAX_DISPLAY_ROWS = 30;
